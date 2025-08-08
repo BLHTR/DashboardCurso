@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Análisis de Capacitaciones</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        body {
+            background-color: #0a192f;
+            color: #e6f1ff;
+            font-family: 'Inter', sans-serif;
+        }
+        .card {
+            background-color: rgba(17, 34, 64, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(136, 146, 176, 0.2);
+        }
+        .kpi-card {
+            @apply card p-6 rounded-lg shadow-lg text-center;
+        }
+        .chart-card {
+            @apply card p-6 rounded-lg shadow-lg;
+            height: 400px;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        .table-header {
+            @apply bg-slate-700 text-slate-300 uppercase text-sm leading-normal;
+        }
+        .table-row {
+            @apply border-b border-slate-700 hover:bg-slate-700;
+        }
+        .notification {
+            @apply p-4 rounded-lg shadow-lg flex items-start;
+            animation: slideIn 0.3s ease-out;
+        }
+        .notification-success {
+            @apply bg-green-600 text-white;
+        }
+        .notification-warning {
+            @apply bg-yellow-500 text-slate-900;
+        }
+        .notification-error {
+            @apply bg-red-600 text-white;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <!-- Botones flotantes en la esquina superior derecha -->
+    <div class="fixed top-4 right-4 z-40 flex flex-col space-y-2">
+        <button id="exportCSV" class="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center shadow-lg hover:bg-green-700 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+            </svg>
+            Exportar CSV
+        </button>
+        <button id="exportPDF" class="bg-red-600 text-white px-4 py-2 rounded-lg flex items-center shadow-lg hover:bg-red-700 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+            </svg>
+            Exportar PDF
+        </button>
+        <button id="settingsBtn" class="bg-slate-700 text-white px-4 py-2 rounded-lg flex items-center shadow-lg hover:bg-slate-600 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+            </svg>
+            Configurar Panel
+        </button>
+    </div>
+    
+    <div class="container mx-auto p-4 md:p-8 pt-20">
+        <header class="mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-white">Dashboard de Análisis de Capacitaciones</h1>
+            <p class="text-slate-400 mt-2">Vista interactiva del progreso de los consultores.</p>
+        </header>
+        
+        <div class="mb-8 flex flex-col md:flex-row gap-4">
+            <div class="flex-1">
+                <label for="courseFilter" class="block text-sm font-medium text-slate-300 mb-1">Filtrar por Curso</label>
+                <select id="courseFilter" class="w-full bg-slate-700 border border-slate-600 rounded-lg p-2.5 text-white focus:ring-amber-400 focus:border-amber-400">
+                    <option value="all">Todos los Cursos</option>
+                </select>
+            </div>
+            <button id="resetFilters" class="bg-amber-400 text-slate-900 font-bold py-2.5 px-6 rounded-lg self-end">Resetear</button>
+        </div>
+        
+        <div id="kpi-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="kpi-card">
+                <h3 class="text-slate-400 text-lg font-medium">Total de Participantes</h3>
+                <p id="totalParticipants" class="text-4xl font-bold mt-2">0</p>
+            </div>
+            <div class="kpi-card">
+                <h3 class="text-slate-400 text-lg font-medium">Total de Cursos</h3>
+                <p id="totalCourses" class="text-4xl font-bold mt-2">0</p>
+            </div>
+            <div class="kpi-card">
+                <h3 class="text-slate-400 text-lg font-medium">Tasa de Aprobación</h3>
+                <p id="approvalRate" class="text-4xl font-bold mt-2">0%</p>
+            </div>
+            <div class="kpi-card">
+                <h3 class="text-slate-400 text-lg font-medium">Promedio Calificación</h3>
+                <p id="averageScore" class="text-4xl font-bold mt-2">0</p>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-8">
+            <div class="chart-card lg:col-span-3">
+                <h3 class="font-bold text-xl mb-4">Rendimiento por Curso</h3>
+                <div class="chart-container">
+                    <canvas id="performanceByCourseChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card lg:col-span-2">
+                <h3 class="font-bold text-xl mb-4">Estado General de Participantes</h3>
+                <div class="chart-container">
+                    <canvas id="overallStatusChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div class="chart-card">
+                <h3 class="font-bold text-xl mb-4">Evolución de Capacitaciones por Mes</h3>
+                <div class="chart-container">
+                    <canvas id="evolutionChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3 class="font-bold text-xl mb-4">Tendencia de Tasa de Aprobación</h3>
+                <div class="chart-container">
+                    <canvas id="approvalTrendChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chart-card">
+             <h3 class="font-bold text-xl mb-4">Detalle de Participantes</h3>
+             <div class="overflow-x-auto">
+                 <table class="min-w-full">
+                     <thead class="table-header">
+                         <tr>
+                             <th class="py-3 px-6 text-left">Nombre</th>
+                             <th class="py-3 px-6 text-left">Curso</th>
+                             <th class="py-3 px-6 text-center">Calificación</th>
+                             <th class="py-3 px-6 text-center">Estado</th>
+                             <th class="py-3 px-6 text-left">Fecha de Finalización</th>
+                         </tr>
+                     </thead>
+                     <tbody id="usersTableBody" class="text-slate-400 text-sm font-light">
+                        </tbody>
+                 </table>
+             </div>
+             
+             <div class="flex justify-between items-center mt-4">
+                <div class="text-sm text-slate-400">
+                    Mostrando <span id="showingFrom">1</span> a <span id="showingTo">10</span> de <span id="totalRecords">0</span> registros
+                </div>
+                <div class="flex space-x-2">
+                    <button id="prevPage" class="px-3 py-1 bg-slate-700 rounded disabled:opacity-50">Anterior</button>
+                    <span id="currentPage" class="px-3 py-1">1</span>
+                    <button id="nextPage" class="px-3 py-1 bg-slate-700 rounded disabled:opacity-50">Siguiente</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Contenedor de notificaciones -->
+    <div id="notificationContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
+    
+    <!-- Modal de configuración -->
+    <div id="settingsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="card p-6 rounded-lg shadow-lg w-full max-w-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-white">Configuración del Panel</h3>
+                <button id="closeSettings" class="text-slate-400 hover:text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="mb-6">
+                <h4 class="text-lg font-medium text-white mb-3">KPIs Visibles</h4>
+                <div class="grid grid-cols-2 gap-3">
+                    <label class="flex items-center space-x-2">
+                        <input type="checkbox" id="kpi-participants" class="form-checkbox h-5 w-5 text-amber-400" checked>
+                        <span class="text-slate-300">Total de Participantes</span>
+                    </label>
+                    <label class="flex items-center space-x-2">
+                        <input type="checkbox" id="kpi-courses" class="form-checkbox h-5 w-5 text-amber-400" checked>
+                        <span class="text-slate-300">Total de Cursos</span>
+                    </label>
+                    <label class="flex items-center space-x-2">
+                        <input type="checkbox" id="kpi-approval" class="form-checkbox h-5 w-5 text-amber-400" checked>
+                        <span class="text-slate-300">Tasa de Aprobación</span>
+                    </label>
+                    <label class="flex items-center space-x-2">
+                        <input type="checkbox" id="kpi-score" class="form-checkbox h-5 w-5 text-amber-400" checked>
+                        <span class="text-slate-300">Promedio Calificación</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="mb-6">
+                <h4 class="text-lg font-medium text-white mb-3">Gráficos Visibles</h4>
+                <div class="space-y-2">
+                    <label class="flex items-center space-x-2">
+                        <input type="checkbox" id="chart-performance" class="form-checkbox h-5 w-5 text-amber-400" checked>
+                        <span class="text-slate-300">Rendimiento por Curso</span>
+                    </label>
+                    <label class="flex items-center space-x-2">
+                        <input type="checkbox" id="chart-status" class="form-checkbox h-5 w-5 text-amber-400" checked>
+                        <span class="text-slate-300">Estado General de Participantes</span>
+                    </label>
+                    <label class="flex items-center space-x-2">
+                        <input type="checkbox" id="chart-evolution" class="form-checkbox h-5 w-5 text-amber-400" checked>
+                        <span class="text-slate-300">Evolución de Capacitaciones por Mes</span>
+                    </label>
+                    <label class="flex items-center space-x-2">
+                        <input type="checkbox" id="chart-approval-trend" class="form-checkbox h-5 w-5 text-amber-400" checked>
+                        <span class="text-slate-300">Tendencia de Tasa de Aprobación</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="flex justify-end space-x-3">
+                <button id="resetSettings" class="px-4 py-2 bg-slate-700 text-white rounded-lg">Restablecer</button>
+                <button id="saveSettings" class="px-4 py-2 bg-amber-400 text-slate-900 font-bold rounded-lg">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURACIÓN DE SUPABASE ---
+        const SUPABASE_URL = 'https://zaxyokejvwupwmbhenso.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpheHlva2Vqdnd1cHdtYmhlbnNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI4NzMwNDYsImV4cCI6MjA2ODQ0OTA0Nn0.boNwgjYadjo6deO_YfKbLCGt0ug4H012D2KuhX0WZB8';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        
+// === Helpers de normalización y cache ===
+function normalizeCourse(s) {
+    if (!s) return '';
+    return s.normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase();
+}
+let coursesList = [];
+function getDisplayName(key, fallback) {
+    try {
+        if (!coursesList || !coursesList.length) return (fallback || '');
+        for (var i = 0; i < coursesList.length; i++) {
+            if (coursesList[i] && coursesList[i].course_key === key) {
+                return coursesList[i].display_name;
+            }
+        }
+        return (fallback || '');
+    } catch (e) {
+        return (fallback || '');
+    }
+}
+ // [{display_name, course_key}]
+// --- ELEMENTOS DEL DOM ---
+        const totalParticipantsEl = document.getElementById('totalParticipants');
+        const totalCoursesEl = document.getElementById('totalCourses');
+        const approvalRateEl = document.getElementById('approvalRate');
+        const averageScoreEl = document.getElementById('averageScore');
+        const usersTableBody = document.getElementById('usersTableBody');
+        const courseFilter = document.getElementById('courseFilter');
+        const resetFiltersBtn = document.getElementById('resetFilters');
+        
+        // --- ELEMENTOS PARA PAGINACIÓN ---
+        const prevPageBtn = document.getElementById('prevPage');
+        const nextPageBtn = document.getElementById('nextPage');
+        const currentPageEl = document.getElementById('currentPage');
+        const showingFromEl = document.getElementById('showingFrom');
+        const showingToEl = document.getElementById('showingTo');
+        const totalRecordsEl = document.getElementById('totalRecords');
+        
+        // --- ELEMENTOS PARA EXPORTACIÓN ---
+        const exportCSVBtn = document.getElementById('exportCSV');
+        const exportPDFBtn = document.getElementById('exportPDF');
+        
+        // --- ELEMENTOS PARA CONFIGURACIÓN ---
+        const settingsBtn = document.getElementById('settingsBtn');
+        const settingsModal = document.getElementById('settingsModal');
+        const closeSettingsBtn = document.getElementById('closeSettings');
+        const saveSettingsBtn = document.getElementById('saveSettings');
+        const resetSettingsBtn = document.getElementById('resetSettings');
+        
+        // --- ESTADO GLOBAL ---
+        let allUsersData = [];
+        let chartInstances = {};
+        let currentPage = 1;
+function getCurrentViewData(){ var sc = courseFilter.value; return (sc==='all') ? allUsersData : allUsersData.filter(function(u){ return u.course_key === sc; }); }
+        const recordsPerPage = 10;
+        
+        // --- LÓGICA DEL DASHBOARD ---
+        /**
+         * Función principal para obtener todos los datos e inicializar el dashboard.
+         */
+        async function initializeDashboard() {
+            try {
+                // Obtener todos los datos de la tabla una sola vez
+                const { data, error } = await supabaseClient.from('users_progress').select('*');
+                if (error) throw error;
+                allUsersData = (data || []).map(function(u){ u.course_key = normalizeCourse(u.course_title); return u; });
+                
+                console.log("Datos cargados:", getCurrentViewData().length);
+                
+                // Poblar filtro desde la VIEW de cursos únicos
+                const { data: coursesData, error: coursesError } = await supabaseClient
+                    .from('courses_unique')
+                    .select('display_name, course_key')
+                    .order('display_name', { ascending: true });
+                if (coursesError) throw coursesError;
+                coursesList = coursesData || [];
+                
+                // Limpia y repuebla
+                Array.from(courseFilter.querySelectorAll('option:not([value="all"])')).forEach(o => o.remove());
+                coursesList.forEach(c => {
+                    const option = document.createElement('option');
+                    option.value = c.course_key;
+                    option.textContent = c.display_name;
+                    courseFilter.appendChild(option);
+                });// Cargar configuración guardada
+                const savedSettings = localStorage.getItem('dashboardSettings');
+                if (savedSettings) {
+                    applySettings(JSON.parse(savedSettings));
+                }
+                
+                // Renderizar todos los componentes
+                renderKPIs(getCurrentViewData());
+                renderPerformanceByCourseChart();
+                renderOverallStatusChart();
+                renderEvolutionChart();
+                renderApprovalTrendChart();
+                renderUsersTable(getCurrentViewData());
+                
+                // Verificar alertas después de cargar datos
+                checkForAlerts();
+                
+            } catch (error) {
+                console.error('Error inicializando el dashboard:', error);
+                showNotification('No se pudieron cargar los datos del dashboard. Revisa la consola para más detalles.', 'error');
+            }
+        }
+        
+        /**
+         * Actualiza todos los componentes del dashboard basándose en los filtros actuales.
+         */
+        function updateDashboard() {
+            const selectedCourse = courseFilter.value;
+            
+            let filteredData = getCurrentViewData();
+            if (selectedCourse !== 'all') {
+                filteredData = getCurrentViewData().filter(user => user.course_key === selectedCourse);
+            }
+            
+            // Resetear página actual cuando se aplica un filtro
+            currentPage = 1;
+            
+            renderKPIs(filteredData);
+            updatePerformanceChart(selectedCourse);
+            renderUsersTable(filteredData, currentPage);
+        }
+        
+        /**
+         * Renderiza las tarjetas de KPIs.
+         */
+        function renderKPIs(data) {
+            const participants = new Set(data.map(user => user.email));
+            const courses = new Set(data.map(u => u.course_key).filter(Boolean));
+            const approvedUsers = data.filter(user => user.approved);
+            const totalFinished = data.filter(user => user.quiz_score !== null);
+            const approvalRate = totalFinished.length > 0 ? (approvedUsers.length / totalFinished.length) * 100 : 0;
+            
+            const scoredUsers = data.filter(user => typeof user.quiz_score === 'number');
+            const averageScore = scoredUsers.length > 0 ? scoredUsers.reduce((acc, user) => acc + user.quiz_score, 0) / scoredUsers.length : 0;
+            
+            totalParticipantsEl.textContent = participants.size;
+            totalCoursesEl.textContent = courseFilter.value === 'all' ? ((coursesList && coursesList.length) || courses.size) : (courses.size > 0 ? 1 : 0);
+            approvalRateEl.textContent = `${approvalRate.toFixed(1)}%`;
+            averageScoreEl.textContent = averageScore.toFixed(1);
+        }
+        
+        /**
+         * Renderiza la tabla de usuarios con paginación.
+         */
+        function renderUsersTable(data, page = 1) {
+            usersTableBody.innerHTML = '';
+            if (data.length === 0) {
+                 usersTableBody.innerHTML = `<tr><td colspan="5" class="text-center py-4">No hay datos para los filtros seleccionados.</td></tr>`;
+                 return;
+            }
+            
+            // Calcular paginación
+            const startIndex = (page - 1) * recordsPerPage;
+            const endIndex = startIndex + recordsPerPage;
+            const paginatedData = data.slice(startIndex, endIndex);
+            
+            // Actualizar información de paginación
+            showingFromEl.textContent = data.length > 0 ? startIndex + 1 : 0;
+            showingToEl.textContent = Math.min(endIndex, data.length);
+            totalRecordsEl.textContent = data.length;
+            currentPageEl.textContent = page;
+            
+            // Actualizar estado de botones
+            prevPageBtn.disabled = page === 1;
+            nextPageBtn.disabled = endIndex >= data.length;
+            
+            // Renderizar filas
+            paginatedData.forEach(user => {
+                let status, statusColor;
+                if (user.approved) {
+                    status = 'Aprobado';
+                    statusColor = 'bg-green-500';
+                } else if (user.quiz_score !== null) {
+                    status = 'Reprobado';
+                    statusColor = 'bg-red-500';
+                } else {
+                    status = 'En Progreso';
+                    statusColor = 'bg-yellow-500';
+                }
+                const row = `
+                    <tr class="table-row">
+                        <td class="py-3 px-6">${user.name || ''} ${user.surname || ''}</td>
+                        <td class="py-3 px-6">${getDisplayName(user.course_key, user.course_title)}</td>
+                        <td class="py-3 px-6 text-center">${user.quiz_score !== null ? user.quiz_score.toFixed(1) : 'N/A'}</td>
+                        <td class="py-3 px-6 text-center">
+                            <span class="px-2 py-1 text-xs font-bold rounded-full text-slate-900 ${statusColor}">${status}</span>
+                        </td>
+                        <td class="py-3 px-6">${user.completed_date || 'N/A'}</td>
+                    </tr>
+                `;
+                usersTableBody.insertAdjacentHTML('beforeend', row);
+            });
+        }
+        
+        /**
+         * Renderiza el gráfico de rendimiento por curso.
+         */
+        function renderPerformanceByCourseChart() {
+            try {
+                // Procesar datos localmente en lugar de usar RPC
+                const courseData = {};
+                
+                getCurrentViewData().forEach(user => {
+                    const key = user.course_key;
+                    if (!key) return; // Ignorar cursos sin nombre
+                    
+                    if (!courseData[key]) {
+                        courseData[key] = {
+                            Aprobados: 0,
+                            Reprobados: 0,
+                            'En Progreso': 0
+                        };
+                    }
+                    
+                    if (user.approved) {
+                        courseData[key].Aprobados++;
+                    } else if (user.quiz_score !== null) {
+                        courseData[key].Reprobados++;
+                    } else {
+                        courseData[key]['En Progreso']++;
+                    }
+                });
+                
+                const keys = Object.keys(courseData);
+                const labels = keys.map(function(k){ return getDisplayName(k, k); });
+                const approvedData = keys.map(function(k){ return courseData[k].Aprobados; });
+                const failedData = keys.map(function(k){ return courseData[k].Reprobados; });
+                const inProgressData = keys.map(function(k){ return courseData[k]['En Progreso']; });
+                
+                console.log("Datos para gráfico de rendimiento:", { labels, approvedData, failedData, inProgressData });
+                
+                const ctx = document.getElementById('performanceByCourseChart');
+                if (!ctx) {
+                    console.error("No se encontró el canvas para el gráfico de rendimiento por curso");
+                    return;
+                }
+                
+                const context = ctx.getContext('2d');
+                
+                if (chartInstances.performance) {
+                    chartInstances.performance.destroy();
+                }
+                
+                chartInstances.performance = new Chart(context, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Aprobados',
+                                data: approvedData,
+                                backgroundColor: 'rgba(74, 222, 128, 0.7)',
+                                borderColor: 'rgba(74, 222, 128, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'Reprobados',
+                                data: failedData,
+                                backgroundColor: 'rgba(239, 68, 68, 0.7)',
+                                 borderColor: 'rgba(239, 68, 68, 1)',
+                                borderWidth: 1
+                            },
+                             {
+                                label: 'En Progreso',
+                                data: inProgressData,
+                                backgroundColor: 'rgba(251, 191, 36, 0.7)',
+                                 borderColor: 'rgba(251, 191, 36, 1)',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { stacked: true, ticks: { color: '#e6f1ff' } },
+                            y: { stacked: true, ticks: { color: '#e6f1ff' }, beginAtZero: true }
+                        },
+                        plugins: {
+                            legend: { labels: { color: '#e6f1ff' } }
+                        },
+                        onClick: (evt, elements) => {
+                            if (elements.length > 0) {
+                                const chartElement = elements[0];
+                                const idx = chartElement.index; const courseKey = keys[idx]; courseFilter.value = courseKey;
+                                updateDashboard();
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error en renderPerformanceByCourseChart:', error);
+                showNotification('Error al cargar el gráfico de rendimiento por curso', 'error');
+            }
+        }
+        
+        /**
+         * Actualiza el gráfico de rendimiento para mostrar solo el curso seleccionado.
+         */
+        function updatePerformanceChart(selectedCourse) {
+             const chart = chartInstances.performance;
+             if (!chart) return;
+             
+             chart.data.datasets.forEach(dataset => {
+                 dataset.data.forEach((value, index) => {
+                     const courseName = chart.data.labels[index];
+                     if(selectedCourse === 'all' || selectedCourse === courseName) {
+                        // Lógica para no ocultar nada, la visibilidad se maneja a nivel de dataset si es necesario
+                     }
+                 });
+             });
+             // Es más simple filtrar las etiquetas y los datos completos
+             // Por simplicidad, se deja que el usuario filtre con el dropdown
+             // La interactividad del click ya lo hace.
+             chart.update();
+        }
+        
+        /**
+         * Renderiza el gráfico de estado general.
+         */
+        function renderOverallStatusChart() {
+            try {
+                // Procesar datos localmente en lugar de usar RPC
+                const statusData = {
+                    'Aprobado': 0,
+                    'Reprobado': 0,
+                    'En Progreso': 0
+                };
+                
+                getCurrentViewData().forEach(user => {
+                    if (user.approved) {
+                        statusData['Aprobado']++;
+                    } else if (user.quiz_score !== null) {
+                        statusData['Reprobado']++;
+                    } else {
+                        statusData['En Progreso']++;
+                    }
+                });
+                
+                console.log("Datos para gráfico de estado general:", statusData);
+                
+                const ctx = document.getElementById('overallStatusChart');
+                if (!ctx) {
+                    console.error("No se encontró el canvas para el gráfico de estado general");
+                    return;
+                }
+                
+                const context = ctx.getContext('2d');
+                
+                if (chartInstances.status) {
+                    chartInstances.status.destroy();
+                }
+                
+                chartInstances.status = new Chart(context, {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(statusData),
+                        datasets: [{
+                            label: 'Participantes',
+                            data: Object.values(statusData),
+                            backgroundColor: [
+                                'rgba(74, 222, 128, 0.7)',
+                                'rgba(239, 68, 68, 0.7)',
+                                'rgba(251, 191, 36, 0.7)'
+                            ],
+                            borderColor: [
+                               '#0a192f'
+                            ],
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: { color: '#e6f1ff' }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error en renderOverallStatusChart:', error);
+                showNotification('Error al cargar el gráfico de estado general', 'error');
+            }
+        }
+        
+        /**
+         * Renderiza el gráfico de evolución temporal.
+         */
+        function renderEvolutionChart() {
+            try {
+                // Procesar datos localmente en lugar de usar RPC
+                const monthlyData = {};
+                
+                getCurrentViewData().forEach(user => {
+                    if (user.start_date) {
+                        const date = new Date(user.start_date);
+                        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                        
+                        if (!monthlyData[monthKey]) {
+                            monthlyData[monthKey] = { started: 0, completed: 0 };
+                        }
+                        
+                        monthlyData[monthKey].started++;
+                        
+                        if (user.completed_date) {
+                            monthlyData[monthKey].completed++;
+                        }
+                    }
+                });
+                
+                // Ordenar por mes
+                const sortedMonths = Object.keys(monthlyData).sort();
+                const labels = sortedMonths;
+                const startedData = sortedMonths.map(month => monthlyData[month].started);
+                const completedData = sortedMonths.map(month => monthlyData[month].completed);
+                
+                console.log("Datos para gráfico de evolución:", { labels, startedData, completedData });
+                
+                const ctx = document.getElementById('evolutionChart');
+                if (!ctx) {
+                    console.error("No se encontró el canvas para el gráfico de evolución");
+                    return;
+                }
+                
+                const context = ctx.getContext('2d');
+                
+                if (chartInstances.evolution) {
+                    chartInstances.evolution.destroy();
+                }
+                
+                chartInstances.evolution = new Chart(context, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Capacitaciones Completadas',
+                                data: completedData,
+                                borderColor: 'rgba(74, 222, 128, 1)',
+                                backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                                tension: 0.3,
+                                fill: true
+                            },
+                            {
+                                label: 'Nuevas Capacitaciones Iniciadas',
+                                data: startedData,
+                                borderColor: 'rgba(96, 165, 250, 1)',
+                                backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                                tension: 0.3,
+                                fill: true
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { ticks: { color: '#e6f1ff' } },
+                            y: { ticks: { color: '#e6f1ff' }, beginAtZero: true }
+                        },
+                        plugins: {
+                            legend: { labels: { color: '#e6f1ff' } }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error en renderEvolutionChart:', error);
+                showNotification('Error al cargar el gráfico de evolución', 'error');
+            }
+        }
+        
+        /**
+         * Renderiza el gráfico de tendencia de aprobación.
+         */
+        function renderApprovalTrendChart() {
+            try {
+                // Procesar datos localmente en lugar de usar RPC
+                const monthlyApprovalData = {};
+                
+                getCurrentViewData().forEach(user => {
+                    if (user.completed_date && user.quiz_score !== null) {
+                        const date = new Date(user.completed_date);
+                        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                        
+                        if (!monthlyApprovalData[monthKey]) {
+                            monthlyApprovalData[monthKey] = { approved: 0, total: 0 };
+                        }
+                        
+                        monthlyApprovalData[monthKey].total++;
+                        
+                        if (user.approved) {
+                            monthlyApprovalData[monthKey].approved++;
+                        }
+                    }
+                });
+                
+                // Ordenar por mes
+                const sortedMonths = Object.keys(monthlyApprovalData).sort();
+                const labels = sortedMonths;
+                const approvalRates = sortedMonths.map(month => {
+                    const data = monthlyApprovalData[month];
+                    return data.total > 0 ? (data.approved / data.total) * 100 : 0;
+                });
+                
+                console.log("Datos para gráfico de tendencia de aprobación:", { labels, approvalRates });
+                
+                const ctx = document.getElementById('approvalTrendChart');
+                if (!ctx) {
+                    console.error("No se encontró el canvas para el gráfico de tendencia de aprobación");
+                    return;
+                }
+                
+                const context = ctx.getContext('2d');
+                
+                if (chartInstances.approvalTrend) {
+                    chartInstances.approvalTrend.destroy();
+                }
+                
+                chartInstances.approvalTrend = new Chart(context, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Tasa de Aprobación (%)',
+                                data: approvalRates,
+                                borderColor: 'rgba(251, 191, 36, 1)',
+                                backgroundColor: 'rgba(251, 191, 36, 0.1)',
+                                tension: 0.3,
+                                fill: true
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { ticks: { color: '#e6f1ff' } },
+                            y: { 
+                                ticks: { color: '#e6f1ff' }, 
+                                beginAtZero: true,
+                                max: 100,
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: { labels: { color: '#e6f1ff' } },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return `Tasa de Aprobación: ${context.raw.toFixed(1)}%`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error en renderApprovalTrendChart:', error);
+                showNotification('Error al cargar el gráfico de tendencia de aprobación', 'error');
+            }
+        }
+        
+        /**
+         * Función para mostrar notificaciones.
+         */
+        function showNotification(message, type = 'success', duration = 5000) {
+            const container = document.getElementById('notificationContainer');
+            const notification = document.createElement('div');
+            notification.className = `notification notification-${type}`;
+            
+            let iconSvg = '';
+            if (type === 'success') {
+                iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>';
+            } else if (type === 'warning') {
+                iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>';
+            } else if (type === 'error') {
+                iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>';
+            }
+            
+            notification.innerHTML = `
+                <div class="flex items-start">
+                    ${iconSvg}
+                    <div>${message}</div>
+                    <button class="ml-4 text-lg leading-none" onclick="this.parentElement.parentElement.remove()">×</button>
+                </div>
+            `;
+            
+            container.appendChild(notification);
+            
+            // Auto-eliminar después de la duración
+            setTimeout(() => {
+                notification.remove();
+            }, duration);
+        }
+        
+        /**
+         * Función para verificar alertas.
+         */
+        function checkForAlerts() {
+            // Verificar si hay participantes con mucho tiempo en progreso
+            const inProgressUsers = getCurrentViewData().filter(user => !user.approved && user.quiz_score === null);
+            const today = new Date();
+            
+            inProgressUsers.forEach(user => {
+                if (user.start_date) {
+                    const startDate = new Date(user.start_date);
+                    const daysInProgress = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
+                    
+                    // Alertar si lleva más de 30 días en progreso
+                    if (daysInProgress > 30) {
+                        showNotification(
+                            `${user.name || ''} ${user.surname || ''} lleva ${daysInProgress} días en progreso en el curso ${getDisplayName(user.course_key, user.course_title)}`,
+                            'warning',
+                            10000
+                        );
+                    }
+                }
+            });
+            
+            // Verificar si la tasa de aprobación general es baja
+            const totalFinished = getCurrentViewData().filter(user => user.quiz_score !== null);
+            const approvedUsers = getCurrentViewData().filter(user => user.approved);
+            const approvalRate = totalFinished.length > 0 ? (approvedUsers.length / totalFinished.length) * 100 : 0;
+            
+            if (approvalRate < 70 && totalFinished.length > 10) {
+                showNotification(
+                    `La tasa de aprobación general es baja: ${approvalRate.toFixed(1)}%`,
+                    'warning',
+                    10000
+                );
+            }
+        }
+        
+        /**
+         * Función para aplicar la configuración del panel.
+         */
+        function applySettings(settings) {
+            // Aplicar visibilidad a KPIs
+            const kpiGrid = document.getElementById('kpi-grid');
+            const kpiCards = kpiGrid.children;
+            
+            // Ocultar/mostrar KPI de participantes
+            kpiCards[0].style.display = settings.kpis.participants ? 'block' : 'none';
+            // Ocultar/mostrar KPI de cursos
+            kpiCards[1].style.display = settings.kpis.courses ? 'block' : 'none';
+            // Ocultar/mostrar KPI de aprobación
+            kpiCards[2].style.display = settings.kpis.approval ? 'block' : 'none';
+            // Ocultar/mostrar KPI de calificación
+            kpiCards[3].style.display = settings.kpis.score ? 'block' : 'none';
+            
+            // Aplicar visibilidad a gráficos
+            const chartContainers = document.querySelectorAll('.chart-card');
+            
+            // Gráfico de rendimiento por curso
+            chartContainers[0].style.display = settings.charts.performance ? 'block' : 'none';
+            // Gráfico de estado general
+            chartContainers[1].style.display = settings.charts.status ? 'block' : 'none';
+            // Gráfico de evolución
+            chartContainers[2].style.display = settings.charts.evolution ? 'block' : 'none';
+            // Gráfico de tendencia de aprobación
+            chartContainers[3].style.display = settings.charts.approvalTrend ? 'block' : 'none';
+            
+            // Ajustar el grid si algunos elementos están ocultos
+            updateGridLayout();
+        }
+        
+        /**
+         * Función para ajustar el grid según los elementos visibles.
+         */
+        function updateGridLayout() {
+            const kpiGrid = document.getElementById('kpi-grid');
+            const visibleKpis = Array.from(kpiGrid.children).filter(card => card.style.display !== 'none').length;
+            
+            if (visibleKpis === 3) {
+                kpiGrid.className = 'grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8';
+            } else if (visibleKpis === 2) {
+                kpiGrid.className = 'grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8';
+            } else {
+                kpiGrid.className = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8';
+            }
+        }
+        
+        // --- EVENT LISTENERS ---
+        courseFilter.addEventListener('change', updateDashboard);
+        resetFiltersBtn.addEventListener('click', () => {
+            courseFilter.value = 'all';
+            currentPage = 1;
+            updateDashboard();
+            renderPerformanceByCourseChart(); renderOverallStatusChart(); renderEvolutionChart(); renderApprovalTrendChart(); // Re-render completos
+        });
+        
+        // Event listeners para paginación
+        prevPageBtn.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                updateDashboard();
+            }
+        });
+        
+        nextPageBtn.addEventListener('click', () => {
+            const selectedCourse = courseFilter.value;
+            let filteredData = getCurrentViewData();
+            if (selectedCourse !== 'all') {
+                filteredData = getCurrentViewData().filter(user => user.course_key === selectedCourse);
+            }
+            const totalPages = Math.ceil(filteredData.length / recordsPerPage);
+            if (currentPage < totalPages) {
+                currentPage++;
+                updateDashboard();
+            }
+        });
+        
+        // Event listeners para exportación
+        exportCSVBtn.addEventListener('click', () => {
+            const selectedCourse = courseFilter.value;
+            let filteredData = getCurrentViewData();
+            if (selectedCourse !== 'all') {
+                filteredData = getCurrentViewData().filter(user => user.course_key === selectedCourse);
+            }
+            
+            let csv = 'Nombre,Curso,Calificación,Estado,Fecha de Finalización\n';
+            filteredData.forEach(user => {
+                const status = user.approved ? 'Aprobado' : (user.quiz_score !== null ? 'Reprobado' : 'En Progreso');
+                csv += `"${user.name || ''} ${user.surname || ''}","${getDisplayName(user.course_key, user.course_title)}","${user.quiz_score !== null ? user.quiz_score : 'N/A'}","${status}","${user.completed_date || 'N/A'}"\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', `dashboard_capacitaciones_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showNotification('Datos exportados a CSV correctamente', 'success');
+        });
+        
+        exportPDFBtn.addEventListener('click', () => {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            const selectedCourse = courseFilter.value;
+            let filteredData = getCurrentViewData();
+            if (selectedCourse !== 'all') {
+                filteredData = getCurrentViewData().filter(user => user.course_key === selectedCourse);
+            }
+            
+            // Preparar datos para la tabla
+            const tableData = filteredData.map(user => {
+                const status = user.approved ? 'Aprobado' : (user.quiz_score !== null ? 'Reprobado' : 'En Progreso');
+                return [
+                    `${user.name || ''} ${user.surname || ''}`,
+                    getDisplayName(user.course_key, user.course_title),
+                    user.quiz_score !== null ? user.quiz_score.toString() : 'N/A',
+                    status,
+                    user.completed_date || 'N/A'
+                ];
+            });
+            
+            // Añadir título
+            doc.setFontSize(18);
+            doc.text('Dashboard de Capacitaciones', 105, 15, { align: 'center' });
+            
+            // Añadir tabla
+            doc.autoTable({
+                head: [['Nombre', 'Curso', 'Calificación', 'Estado', 'Fecha de Finalización']],
+                body: tableData,
+                startY: 25,
+                styles: { fontSize: 10 },
+                headStyles: { fillColor: [30, 41, 59] }
+            });
+            
+            // Guardar PDF
+            doc.save(`dashboard_capacitaciones_${new Date().toISOString().split('T')[0]}.pdf`);
+            
+            showNotification('Datos exportados a PDF correctamente', 'success');
+        });
+        
+        // Event listeners para configuración
+        settingsBtn.addEventListener('click', () => {
+            settingsModal.classList.remove('hidden');
+            
+            // Cargar configuración guardada
+            const savedSettings = localStorage.getItem('dashboardSettings');
+            if (savedSettings) {
+                const settings = JSON.parse(savedSettings);
+                
+                // Aplicar configuración a KPIs
+                document.getElementById('kpi-participants').checked = settings.kpis.participants !== false;
+                document.getElementById('kpi-courses').checked = settings.kpis.courses !== false;
+                document.getElementById('kpi-approval').checked = settings.kpis.approval !== false;
+                document.getElementById('kpi-score').checked = settings.kpis.score !== false;
+                
+                // Aplicar configuración a gráficos
+                document.getElementById('chart-performance').checked = settings.charts.performance !== false;
+                document.getElementById('chart-status').checked = settings.charts.status !== false;
+                document.getElementById('chart-evolution').checked = settings.charts.evolution !== false;
+                document.getElementById('chart-approval-trend').checked = settings.charts.approvalTrend !== false;
+            }
+        });
+        
+        closeSettingsBtn.addEventListener('click', () => {
+            settingsModal.classList.add('hidden');
+        });
+        
+        saveSettingsBtn.addEventListener('click', () => {
+            // Recopilar configuración
+            const settings = {
+                kpis: {
+                    participants: document.getElementById('kpi-participants').checked,
+                    courses: document.getElementById('kpi-courses').checked,
+                    approval: document.getElementById('kpi-approval').checked,
+                    score: document.getElementById('kpi-score').checked
+                },
+                charts: {
+                    performance: document.getElementById('chart-performance').checked,
+                    status: document.getElementById('chart-status').checked,
+                    evolution: document.getElementById('chart-evolution').checked,
+                    approvalTrend: document.getElementById('chart-approval-trend').checked
+                }
+            };
+            
+            // Guardar en localStorage
+            localStorage.setItem('dashboardSettings', JSON.stringify(settings));
+            
+            // Aplicar configuración
+            applySettings(settings);
+            
+            // Cerrar modal
+            settingsModal.classList.add('hidden');
+            
+            // Mostrar notificación
+            showNotification('Configuración guardada correctamente', 'success');
+        });
+        
+        resetSettingsBtn.addEventListener('click', () => {
+            // Restablecer valores predeterminados
+            document.getElementById('kpi-participants').checked = true;
+            document.getElementById('kpi-courses').checked = true;
+            document.getElementById('kpi-approval').checked = true;
+            document.getElementById('kpi-score').checked = true;
+            document.getElementById('chart-performance').checked = true;
+            document.getElementById('chart-status').checked = true;
+            document.getElementById('chart-evolution').checked = true;
+            document.getElementById('chart-approval-trend').checked = true;
+        });
+        
+        // --- INICIALIZACIÓN ---
+        document.addEventListener('DOMContentLoaded', initializeDashboard);
+    </script>
+</body>
+</html>
