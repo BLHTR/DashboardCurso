@@ -358,23 +358,23 @@ function getCurrentViewData(){ var sc = courseFilter.value; return (sc==='all') 
         /**
          * Actualiza todos los componentes del dashboard basándose en los filtros actuales.
          */
-        function updateDashboard() {
-            const selectedCourse = courseFilter.value;
-            
-            let filteredData = getCurrentViewData();
-            if (selectedCourse !== 'all') {
-                filteredData = getCurrentViewData().filter(user => user.course_key === selectedCourse);
-            }
-            
-            // Resetear página actual cuando se aplica un filtro
-            currentPage = 1;
-            
-            renderKPIs(filteredData);
-            updatePerformanceChart(selectedCourse);
-            renderUsersTable(filteredData, currentPage);
-        }
         
-        /**
+function updateDashboard() {
+    const selectedCourse = courseFilter.value;
+    const filteredData = getCurrentViewData(); // ya respeta el filtro
+
+    // Resetear paginación
+    currentPage = 1;
+
+    // Recalcular TODO según el filtro
+    renderKPIs(filteredData);
+    renderPerformanceByCourseChart();
+    renderOverallStatusChart();
+    renderEvolutionChart();
+    renderApprovalTrendChart();
+    renderUsersTable(filteredData, currentPage);
+}
+/**
          * Renderiza las tarjetas de KPIs.
          */
         function renderKPIs(data) {
